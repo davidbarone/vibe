@@ -16,7 +16,7 @@ The purpose of this tool is to compare 2 csv files, and output differences betwe
   - When using `TryParse` functions with a `[ref]` parameter, the parameter must be previously initialised to a non `$null` value.
   - Where statements are generated over multiple lines, check that the line continuation character (back-tick) is correctly used.
 - When dealing with arrays in Set-StrictMode, to prevent issues with unboxing arrays, ensure that all arrays are forced to be arrays by wrapping them in the `@()` array subexpression.
-- All functions should be fully commented with standard sections like .SYPNOSIS, .DESCRIPTION etc.
+- All functions should be fully commented with standard sections like .SYNOPSIS, .DESCRIPTION etc.
 - The solution generated should adhere to the function structure defined in this specification. However, additional functions may be added if required. 
 - The solution generated should be refactored as much as possible so that any repeated code is extracted into additional functions as required.
 - Logging should be added. Logging statements should be added to the start and end of each function. Logging should be output to the console / standard output with cyan foreground colour:
@@ -30,7 +30,6 @@ The purpose of this tool is to compare 2 csv files, and output differences betwe
   - `$NullValues`: 'null'
   - `$ApplyTrim`: `$true`
   - `$ScanRows`: 10
-  - `$SummariseResults`: `$true`
 - Include 2 test csv files for use with the script. The files should be called 'left.csv' and 'right.csv' and have the following properties:
   - Both should be valid CSV files.
   - Both csv files should have columns: recordId, columnA, columnB, columnC, columnD.
@@ -44,7 +43,7 @@ The purpose of this tool is to compare 2 csv files, and output differences betwe
 - The generated PowerShell code should be put into a single .ps1 file, and all functions should be public. This single file should include:
   - All helper functions
   - The main top-level function
-  - The sample invokation code to `Compare-Csv`
+  - The sample invocation code to `Compare-Csv`
 
 ## Architecture
 The following lays out the general architecture of the solution.
@@ -77,7 +76,7 @@ The following parameters should defined on the main public function:
 | `$ApplyTrim`        | `Boolean` | no        | `$false` | If set, then all string values read in are trimmed prior to further processing (TRIM LEFT and TRIM RIGHT steps).                                          |
 | `$AutoDetectTypes`  | `Boolean` | no        | `$false` | If set, then column data types are auto-detected.                                                                                                         |
 | `$ScanRows`         | `Integer` | no        | `$null`  | This parameter is used to control the number of rows scanned in the left and right datasets when calculating data types (SCAN LEFT and SCAN RIGHT steps). |
-| `$SummariseResults` | `Boolean` | no        | `$true`  | If set to `$true`, then summary results are produced. Otherwise detailed results are produced. step.                                                      |
+| `$SummariseResults` | `Boolean` | no        | `$true`  | If set to `$true`, then summary results are produced. Otherwise detailed results are produced.                                                            |
 | `$DetailedRows`     | `Integer` | no        | 0        | This parameter is used to limit the number of detailed results output.                                                                                    |
 
 ## Top-Level Function
@@ -91,35 +90,36 @@ This function is the single top-level function that the user calls to compare 2 
 ### Steps
 The function will perform the following steps in sequential order:
 
-| Step Group | Step                        | Precondition             | Function to Call     | Parameters to Pass In                                                                  | Variable To Assign Result To | Description / Notes                                    |
-| ---------- | --------------------------- | ------------------------ | -------------------- | -------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------ |
-| Validation | Validate KeyColumns         | n/a                      | `Parse-List`         | `$KeyColumns`, `$Delimiter`                                                            | `$keyColumnsArray`           | Parses the KeyColumns parameter into an array.         |
-| Validation | Validate ExcludeColumns     | n/a                      | `Parse-List`         | `$ExcludeColumns`, `$Delimiter`                                                        | `$excludeColumnsArray`       | Parses the ExcludeColumns parameter into an array.     |
-| Validation | Validate NullValues         | n/a                      | `Parse-List`         | `$NullValues`, `$Delimiter`                                                            | `$nullValuesArray`           | Parses the NullValues parameter into an array.         |
-| Validation | Validate Left Path          | n/a                      | `Test-Path`          | `$Left`                                                                                | n/a                          | Checks that the left csv file exists.                  |
-| Validation | Validate Right Path         | n/a                      | `Test-Path`          | `$Right`                                                                               | n/a                          | Checks that the right csv file exists.                 |
-| Read       | Read Left File              | n/a                      | `Read-Csv`           | `$Left`, `$Delimiter`                                                                  | `$leftDataset`               | Reads left csv file into dataset object.               |
-| Read       | Read Right File             | n/a                      | `Read-Csv`           | `$Right`, `$Delimiter`                                                                 | `$rightDataset`              | Reads right csv file into dataset object.              |
-| Processing | Remove Left Columns         | n/a                      | `Remove-Columns`     | `$leftDataset`, `$excludeColumnsArray`                                                 | `$leftDataset`               | Removes any unwanted columns from the left dataset.    |
-| Processing | Remove Right Columns        | n/a                      | `Remove-Columns`     | `$rightDataset`, `$excludeColumnsArray`                                                | `$rightDataset`              | Removes any unwanted columns from the right dataset.   |
-| Processing | Trim Left Dataset           | `$ApplyTrim` = `$true`   | `Trim-Dataset`       | `$leftDataset`                                                                         | `$leftDataset`               | Trims cells in left dataset.                           |
-| Processing | Trim Right Dataset          | `$ApplyTrim` = `$true`   | `Trim-Dataset`       | `$rightDataset`                                                                        | `$rightDataset`              | Trims cells in right dataset.                          |
-| Processing | Nulls Left Dataset          | `$NullValues` != `$null` | `Apply-NullValues`   | `$leftDataset`, `$nullValuesArray`                                                     | `$leftDataset`               | Sets null values in left dataset.                      |
-| Processing | Nulls Right Dataset         | `$NullValues` != `$null` | `Apply-NullValues`   | `$rightDataset`, `$nullValuesArray`                                                    | `$rightDataset`              | Sets null values in right dataset.                     |
-| Processing | RowId Left Dataset          | `$RowIdName` != `$null`  | `Add-RowId`          | `$leftDataset`, `$RowIdName`                                                           | `$leftDataset`               | Adds row id in left dataset.                           |
-| Processing | RowId Right Dataset         | `$RowIdName` != `$null`  | `Add-RowId`          | `$rightDataset`, `$RowIdName`                                                          | `$rightDataset`              | Adds row id in right dataset.                          |
-| Processing | Get DataTypes Left Dataset  | n/a                      | `Get-DataTypes`      | `$leftDataset`, `$AutoDetectTypes`, `$ScanRows`, `$ColumnTypes`                        | `$leftDatasetColumnTypes`    | Gets column types in left dataset.                     |
-| Processing | Get DataTypes Right Dataset | n/a                      | `Get-DataTypes`      | `$rightDataset`, `$AutoDetectTypes`, `$ScanRows`, `$ColumnTypes`                       | `$rightDatasetColumnTypes`   | Gets column types in right dataset.                    |
-| Processing | Cast Left Dataset           | n/a                      | `Cast-Dataset`       | `$leftDataset`, `$leftDatasetColumnTypes`                                              | `$leftDataset`               | Casts columns in left dataset.                         |
-| Processing | Cast Right Dataset          | n/a                      | `Cast-Dataset`       | `$rightDataset`, `$rightDatasetColumnTypes`                                            | `$rightDataset`              | Casts columns in right dataset.                        |
-| Processing | Add Key Column Left         | n/a                      | `Add-Key`            | `$leftDataset`, `$keyColumnsArray`                                                     | `$leftDataset`               | Adds a new metadata column __key to the left file.     |
-| Processing | Add Key Column Right        | n/a                      | `Add-Key`            | `$rightDataset`, `$keyColumnsArray`                                                    | `$rightDataset`              | Adds a new metadata column __key to the right file.    |
-| Read       | Get Left Keys               | n/a                      | `Get-DistinctValues` | `$leftDataset`, `$keyColumnsArray`                                                     | `$leftKeys`                  | Gets all the unique keys in the left csv file.         |
-| Read       | Get Right Keys              | n/a                      | `Get-DistinctValues` | `$rightDataset`, `$keyColumnsArray`                                                    | `$rightKeys`                 | Gets all the unique keys in the right csv file.        |
-| Processing | Check Unique Left           | n/a                      | `Check-KeyUnique`    | `$leftDataset`                                                                         | n/a                          | Checks that the left csv file key columns are unique.  |
-| Processing | Check Unique Right          | n/a                      | `Check-KeyUnique`    | `$rightDataset`                                                                        | n/a                          | Checks that the right csv file key columns are unique. |
-| Processing | Compare datasets            | n/a                      | `Compare-Datasets`   | `$leftDataset`, `$rightDataset`, `$leftDatasetColumnTypes`, `$rightDatasetColumnTypes` | `$results`                   | Compares the 2 datasets.                               |
-| Output     | Write output                | n/a                      | `Output-Results`     | `$results`, `$SummariseResults`, `$DetailedRows`                                       | n/a                          | Writes results to console                              |
+| Step Group | Step                        | Precondition            | Function to Call     | Parameters to Pass In                                                                  | Variable To Assign Result To | Description / Notes                                    |
+| ---------- | --------------------------- | ----------------------- | -------------------- | -------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------ |
+| Validation | Validate KeyColumns         | n/a                     | `Parse-List`         | `$KeyColumns`, `$Delimiter`                                                            | `$keyColumnsArray`           | Parses the `$KeyColumns` parameter into an array.      |
+| Validation | Validate ExcludeColumns     | n/a                     | `Parse-List`         | `$ExcludeColumns`, `$Delimiter`                                                        | `$excludeColumnsArray`       | Parses the `$ExcludeColumns` parameter into an array.  |
+| Validation | Validate NullValues         | n/a                     | `Parse-List`         | `$NullValues`, `$Delimiter`                                                            | `$nullValuesArray`           | Parses the `$NullValues` parameter into an array.      |
+| Validation | Validate ColumnTypes        | n/a                     | `Parse-List`         | `$ColumnTypes`, `$Delimiter`                                                           | `$columnTypesArray`          | Parses the `$ColumnTypes` parameter into an array.     |
+| Validation | Validate Left Path          | n/a                     | `Test-Path`          | `$Left`                                                                                | n/a                          | Checks that the left csv file exists.                  |
+| Validation | Validate Right Path         | n/a                     | `Test-Path`          | `$Right`                                                                               | n/a                          | Checks that the right csv file exists.                 |
+| Read       | Read Left File              | n/a                     | `Read-Csv`           | `$Left`, `$Delimiter`                                                                  | `$leftDataset`               | Reads left csv file into dataset object.               |
+| Read       | Read Right File             | n/a                     | `Read-Csv`           | `$Right`, `$Delimiter`                                                                 | `$rightDataset`              | Reads right csv file into dataset object.              |
+| Processing | Remove Left Columns         | n/a                     | `Remove-Columns`     | `$leftDataset`, `$excludeColumnsArray`                                                 | `$leftDataset`               | Removes any unwanted columns from the left dataset.    |
+| Processing | Remove Right Columns        | n/a                     | `Remove-Columns`     | `$rightDataset`, `$excludeColumnsArray`                                                | `$rightDataset`              | Removes any unwanted columns from the right dataset.   |
+| Processing | Trim Left Dataset           | `$ApplyTrim` = `$true`  | `Trim-Dataset`       | `$leftDataset`                                                                         | `$leftDataset`               | Trims cells in left dataset.                           |
+| Processing | Trim Right Dataset          | `$ApplyTrim` = `$true`  | `Trim-Dataset`       | `$rightDataset`                                                                        | `$rightDataset`              | Trims cells in right dataset.                          |
+| Processing | Nulls Left Dataset          | n/a                     | `Apply-NullValues`   | `$leftDataset`, `$nullValuesArray`                                                     | `$leftDataset`               | Sets null values in left dataset.                      |
+| Processing | Nulls Right Dataset         | n/a                     | `Apply-NullValues`   | `$rightDataset`, `$nullValuesArray`                                                    | `$rightDataset`              | Sets null values in right dataset.                     |
+| Processing | RowId Left Dataset          | `$RowIdName` != `$null` | `Add-RowId`          | `$leftDataset`, `$RowIdName`                                                           | `$leftDataset`               | Adds row id in left dataset.                           |
+| Processing | RowId Right Dataset         | `$RowIdName` != `$null` | `Add-RowId`          | `$rightDataset`, `$RowIdName`                                                          | `$rightDataset`              | Adds row id in right dataset.                          |
+| Processing | Get DataTypes Left Dataset  | n/a                     | `Get-DataTypes`      | `$leftDataset`, `$AutoDetectTypes`, `$ScanRows`, `$columnTypesArray`                   | `$leftDatasetColumnTypes`    | Gets column types in left dataset.                     |
+| Processing | Get DataTypes Right Dataset | n/a                     | `Get-DataTypes`      | `$rightDataset`, `$AutoDetectTypes`, `$ScanRows`, `$columnTypesArray`                  | `$rightDatasetColumnTypes`   | Gets column types in right dataset.                    |
+| Processing | Cast Left Dataset           | n/a                     | `Cast-Dataset`       | `$leftDataset`, `$leftDatasetColumnTypes`                                              | `$leftDataset`               | Casts columns in left dataset.                         |
+| Processing | Cast Right Dataset          | n/a                     | `Cast-Dataset`       | `$rightDataset`, `$rightDatasetColumnTypes`                                            | `$rightDataset`              | Casts columns in right dataset.                        |
+| Processing | Add Key Column Left         | n/a                     | `Add-Key`            | `$leftDataset`, `$keyColumnsArray`                                                     | `$leftDataset`               | Adds a new metadata column __key to the left file.     |
+| Processing | Add Key Column Right        | n/a                     | `Add-Key`            | `$rightDataset`, `$keyColumnsArray`                                                    | `$rightDataset`              | Adds a new metadata column __key to the right file.    |
+| Read       | Get Left Keys               | n/a                     | `Get-DistinctValues` | `$leftDataset`, `$keyColumnsArray`                                                     | `$leftKeys`                  | Gets all the unique keys in the left csv file.         |
+| Read       | Get Right Keys              | n/a                     | `Get-DistinctValues` | `$rightDataset`, `$keyColumnsArray`                                                    | `$rightKeys`                 | Gets all the unique keys in the right csv file.        |
+| Processing | Check Unique Left           | n/a                     | `Check-KeyUnique`    | `$leftDataset`                                                                         | n/a                          | Checks that the left csv file key columns are unique.  |
+| Processing | Check Unique Right          | n/a                     | `Check-KeyUnique`    | `$rightDataset`                                                                        | n/a                          | Checks that the right csv file key columns are unique. |
+| Processing | Compare datasets            | n/a                     | `Compare-Datasets`   | `$leftDataset`, `$rightDataset`, `$leftDatasetColumnTypes`, `$rightDatasetColumnTypes` | `$results`                   | Compares the 2 datasets.                               |
+| Output     | Write output                | n/a                     | `Output-Results`     | `$results`, `$SummariseResults`, `$DetailedRows`                                       | n/a                          | Writes results to console.                             |
 
 ### Notes:
 1. When calling the above functions in order, the overall process should stop immediately if any step / function throws an exception.
@@ -283,11 +283,11 @@ Checks that the key columns for a csv file contain unique values for the entire 
 | `$Dataset`     | `PSCustomObject[]` | Yes       | n/a     | The input dataset |
 
 #### Exceptions
-If `$datassetRowCount` != `$keyRowCount` as detailed in the processing section below, throw an exception: 'The key column does not contain all unique values!`.
+If `$datasetRowCount` != `$keyRowCount` as detailed in the processing section below, throw an exception: 'The key column does not contain all unique values!`.
 
 #### Processing
 1. Calculate the number of rows in `$Dataset`. Call the `Get-RowCount` passing in `$Dataset`, and assign the result to a variable `$datasetRowCount`.
-2. Calculate the number of distinct key values in the dataset by calling `Get-DistinctValues` passing in parameters of `$Dataset` and the literal key name '__key'. Count the count of the return array to a variable `$keyRowCount`.
+2. Calculate the number of distinct key values in the dataset by calling `Get-DistinctValues` passing in parameters of `$Dataset` and the literal key names: `@('__key')`. Count the count of the return array to a variable `$keyRowCount`.
 4. Return `$true` if `$datasetRowCount` = `$keyRowCount`. Otherwise throw an exception.
 
 #### Returns
@@ -344,12 +344,12 @@ Column types are by default `STRING` unless another type is detected during auto
 It is assumed that `$Dataset` contains an array of elements. `Get-DataTypes` must always run BEFORE `Cast-Dataset`. The cell values at this point are normally strings, but there are cases when this is not the case (for example, if a RowID column is added, this will contain integer values).
 
 #### Parameters
-| Parameter Name     | Data Type          | Mandatory | Default | Purpose                                                    |
-| ------------------ | ------------------ | --------- | ------- | ---------------------------------------------------------- |
-| `$Dataset`         | `PSCustomObject[]` | Yes       | n/a     | The input dataset                                          |
-| `$AutoDetectTypes` | `Boolean`          | No        | $false  | Set to true to auto-detect types                           |
-| `$ScanRows`        | `Integer`          | No        | $null   | Defines the number of rows to scan to guess the data types |
-| `$ColumnTypes`     | `String`           | No        | $null   | Option parameter specifying column type overrides          |
+| Parameter Name      | Data Type          | Mandatory | Default | Purpose                                                                                                                 |
+| ------------------- | ------------------ | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `$Dataset`          | `PSCustomObject[]` | Yes       | n/a     | The input dataset                                                                                                       |
+| `$AutoDetectTypes`  | `Boolean`          | No        | $false  | Set to true to auto-detect types                                                                                        |
+| `$ScanRows`         | `Integer`          | No        | $null   | Defines the number of rows to scan to guess the data types                                                              |
+| `$ColumnTypesArray` | `String[]`         | No        | $null   | Optional parameter specifying column type overrides as an array. Each element is in format: '<column name>:<data type>' |
 
 #### Validations
 The function should perform the following validations at the start of the function:
@@ -373,10 +373,8 @@ The function should perform the following validations at the start of the functi
       7. `DataTypeEnum.DECIMAL` if all values in `$dataTypes` are `DataTypeEnum.DECIMAL`
       9. `DataTypeEnum.DATETIME` if all values in `$dataTypes` are `DataTypeEnum.DATETIME`
       10. Otherwise `DataTypeEnum.STRING`
-5. If `$ColumnTypes` is set to a non null value (!= $null), then do the following:
-   1. Create a hashtable to store the $ColumnTypes. The keys will be `String` values, the values will be `DataTypeEnum` values.
-   2. Split `$ColumnTypes` by the comma delimiter character and assign to an local array variable `$ColumnTypesArray`.
-   3. For each of the elements `$element` in `$ColumnTypesArray`, do the following:
+5. If `$ColumnTypesArray` is set to a non `$null` value (!= `$null`) and contains at least 1 element, then do the following:
+   1. For each `$element` in `$ColumnTypesArray`:
       1. Split `$element` by the colon (:) character. Assign the resulting array to a new variable `$columnDataType`.
       2. Assign `$columnDataType[0]` to a local string variable: `$key`.
       3. Cast `$columnDataType[1]` to type `DataTypeEnum` and assign result to a local variable: `$value`.
@@ -470,13 +468,15 @@ Replaces null-like values with `$null` in a dataset. By default any empty string
 | Parameter Name     | Data Type          | Mandatory | Default | Purpose                          |
 | ------------------ | ------------------ | --------- | ------- | -------------------------------- |
 | `$Dataset`         | `PSCustomObject[]` | Yes       | n/a     | The input dataset                |
-| `$NullValuesArray` | `String[]`         | Yes       | n/a     | The null-like values as an array |
+| `$NullValuesArray` | `String[]`         | No        | `$null` | The null-like values as an array |
 
 #### Processing
 1. Get the column names for the dataset, by calling the `Get-ColumnNames` function, passing in `$Dataset`. Assign the result to a variable called `$columnNames`.
 2. For each `$columnName` in `$columnNames`
    1. for each `$row` in `$Dataset`:
-      1. If the value `$row[$columnName]` is an empty string, or is contained in the `$NullValuesArray` array, then set `$row[$columnName]` to `$null`.
+      1. if `$NullValuesArray` != `$null` and contains elements then:
+         1. If the value `$row[$columnName]` is contained in the `$NullValuesArray` array, then set `$row[$columnName]` to `$null`.
+      2. If the value `$row[$columnName]` is an empty string, then set `$row[$columnName]` to `$null`.
 3. Return `$Dataset`
 
 #### Returns
@@ -513,6 +513,9 @@ Returns the `$Dataset` object, but with an additional row id column added.
 
 #### Purpose
 Casts all columns in a dataset to the correct types based on a previous scan of data types. Note that all types are nullable - existing `$null` values should be left as `$null`.
+
+#### Assumptions
+The `$ColumnTypes` parameter in the special `hashtable` format, is generated by the `Get-DataTypes` function.
 
 #### Parameters
 | Parameter Name | Data Type          | Mandatory | Default | Purpose                         |
