@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 enum DataTypeEnum {
+    NONE     = 0
     BOOLEAN  = 1
     INTEGER  = 2
     DECIMAL  = 3
@@ -236,7 +237,9 @@ PSCustomObject[]
     try {
         foreach ($row in @($Dataset)) {
             $key = Concatenate-Values -Row $row -columnArray $KeyColumns
-            $row.__key = $key
+            Write-Host $key
+            Write-host $row
+            $row | Add-Member -MemberType NoteProperty -Name '__key' -Value $key
         }
         return @($Dataset)
     }
@@ -870,7 +873,7 @@ SchemaComparisonResult[]
 
         foreach ($leftKey in $LeftDatasetColumnTypes.Keys) {
             $leftType = $LeftDatasetColumnTypes[$leftKey]
-            $result = [SchemaComparisonResult]::new($leftKey, $leftType, $null)
+            $result = [SchemaComparisonResult]::new($leftKey, $leftType, [DataTypeEnum]::NONE)
             $results += $result
         }
 
@@ -880,7 +883,7 @@ SchemaComparisonResult[]
             if ($existing) {
                 $existing.RightType = $rightType
             } else {
-                $result = [SchemaComparisonResult]::new($rightKey, $null, $rightType)
+                $result = [SchemaComparisonResult]::new($rightKey, [DataTypeEnum]::NONE, $rightType)
                 $results += $result
             }
         }
@@ -1179,9 +1182,9 @@ None
     Write-Log "BEGIN Compare-Csv"
     try {
         $keyColumnsArray     = Parse-List -Value $KeyColumns -Delimiter $Delimiter
-        $excludeColumnsArray = if ($null -ne $ExcludeColumns) { Parse-List -Value $ExcludeColumns -Delimiter $Delimiter } else { @() }
-        $nullValuesArray     = if ($null -ne $NullValues) { Parse-List -Value $NullValues -Delimiter $Delimiter } else { @() }
-        $columnTypesArray    = if ($null -ne $ColumnTypes) { Parse-List -Value $ColumnTypes -Delimiter $Delimiter } else { @() }
+        $excludeColumnsArray = if ('' -ne $ExcludeColumns) { Parse-List -Value $ExcludeColumns -Delimiter $Delimiter } else { @("a") }
+        $nullValuesArray     = if ('' -ne $NullValues) { Parse-List -Value $NullValues -Delimiter $Delimiter } else { @() }
+        $columnTypesArray    = if ('' -ne $ColumnTypes) { Parse-List -Value $ColumnTypes -Delimiter $Delimiter } else { @() }
 
         Test-Path -Path $Left | Out-Null
         Test-Path -Path $Right | Out-Null
@@ -1189,7 +1192,8 @@ None
         $leftDataset  = Read-Csv -Path $Left -Delimiter $Delimiter
         $rightDataset = Read-Csv -Path $Right -Delimiter $Delimiter
 
-        if ($excludeColumnsArray.Count -gt 0) {
+        $excludeColumnsArray.GetType().Name
+        if (@($excludeColumnsArray).Count -gt 0) {
             $leftDataset  = Remove-Columns -Dataset $leftDataset -ExcludeColumns $excludeColumnsArray
             $rightDataset = Remove-Columns -Dataset $rightDataset -ExcludeColumns $excludeColumnsArray
         }
@@ -1202,7 +1206,7 @@ None
         $leftDataset  = Apply-NullValues -Dataset $leftDataset -NullValuesArray $nullValuesArray
         $rightDataset = Apply-NullValues -Dataset $rightDataset -NullValuesArray $nullValuesArray
 
-        if ($null -ne $RowIdName) {
+        if ('' -ne $RowIdName) {
             $leftDataset  = Add-RowId -Dataset $leftDataset -RowIdName $RowIdName
             $rightDataset = Add-RowId -Dataset $rightDataset -RowIdName $RowIdName
         }
@@ -1213,9 +1217,13 @@ None
         $leftDataset  = Cast-Dataset -Dataset $leftDataset -ColumnTypes $leftDatasetColumnTypes
         $rightDataset = Cast-Dataset -Dataset $rightDataset -ColumnTypes $rightDatasetColumnTypes
 
+        Write-Host "bb"
         $leftDataset  = Add-Key -Dataset $leftDataset -KeyColumns $keyColumnsArray
+        Write-Host "vv"
         $rightDataset = Add-Key -Dataset $rightDataset -KeyColumns $keyColumnsArray
 
+        $leftDataset
+        Write-Host "a"
         $leftKeys  = Get-DistinctValues -Dataset $leftDataset -Columns $keyColumnsArray
         $rightKeys = Get-DistinctValues -Dataset $rightDataset -Columns $keyColumnsArray
 
@@ -1347,7 +1355,7 @@ None
 }
 
 # Sample invocation
-New-TestCsvFiles
+# New-TestCsvFiles
 
 Compare-Csv `
     -Left 'left.csv' `
