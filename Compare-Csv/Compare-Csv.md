@@ -32,6 +32,8 @@ The purpose of this tool is to compare 2 csv files, and output differences betwe
   - `$NullValues`: 'null'
   - `$ApplyTrim`: `$true`
   - `$ScanRows`: 10
+  - `$AutoDetectTypes`: `$true`
+  - `$RoundRules`: 'columnA:1mi,columnB:1dp'
 - Include 2 test csv files for use with the script. The files should be called 'left.csv' and 'right.csv' and have the following properties:
   - Both should be valid CSV files.
   - Both csv files should have columns: recordId, columnA, columnB, columnC, columnD.
