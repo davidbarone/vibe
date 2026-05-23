@@ -1,5 +1,8 @@
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+
+# =========================
+# Enums and Types
+# =========================
 
 enum DataTypeEnum {
     NONE     = 0
@@ -11,9 +14,9 @@ enum DataTypeEnum {
 }
 
 enum CompareTypeEnum {
-    KEY_LEFT_ONLY  = 4
-    KEY_RIGHT_ONLY = 5
-    DIFFERENT      = 6
+    KEY_LEFT_ONLY  = 1
+    KEY_RIGHT_ONLY = 2
+    DIFFERENT      = 3
 }
 
 class SchemaComparisonResult {
@@ -28,8 +31,11 @@ class SchemaComparisonResult {
     }
 }
 
+# =========================
+# Logging
+# =========================
+
 function Write-Log {
-    [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message
@@ -37,29 +43,31 @@ function Write-Log {
     Write-Host $Message -ForegroundColor Cyan
 }
 
+# =========================
+# Helper Functions
+# =========================
+
 function Parse-List {
-<#
-.SYNOPSIS
-Parses a delimited string into a string array.
+    <#
+    .SYNOPSIS
+    Parses a delimited string into an array.
 
-.DESCRIPTION
-Takes a string input that represents a set of values delimited by a character.
-If the input is null or empty, returns an empty array. Always returns an array.
+    .DESCRIPTION
+    Takes a string input that represents a set of values delimited by a character.
+    Returns an array of strings. If the input is null or empty, returns an empty array.
 
-.PARAMETER Value
-The input string.
+    .PARAMETER Value
+    The input string.
 
-.PARAMETER Delimiter
-The delimiter character. Defaults to ','.
+    .PARAMETER Delimiter
+    The delimiter character. Defaults to ','.
 
-.OUTPUTS
-System.String[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    String[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Value,
-        [Parameter(Mandatory = $false)]
         [string]$Delimiter = ','
     )
 
@@ -67,31 +75,78 @@ System.String[]
         return @()
     }
 
-    $parts = $Value.Split($Delimiter)
-    return @($parts)
+    return @($Value.Split($Delimiter))
 }
 
-function Test-Path {
-<#
-.SYNOPSIS
-Validates that a file exists.
+function Parse-Hashtable {
+    <#
+    .SYNOPSIS
+    Parses a key:value,key2:value2 string into a hashtable.
 
-.DESCRIPTION
-Checks that the file at the specified path exists. Throws if it does not.
+    .DESCRIPTION
+    Takes a string input in the format 'key1:value1,key2:value2' and converts it to a hashtable.
 
-.PARAMETER Path
-The file path to test.
+    .PARAMETER Value
+    The input string.
 
-.OUTPUTS
-System.Boolean
-#>
-    [CmdletBinding()]
+    .PARAMETER PairDelimiter
+    Delimiter between pairs. Defaults to ','.
+
+    .PARAMETER KeyValueDelimiter
+    Delimiter between key and value. Defaults to ':'.
+
+    .OUTPUTS
+    Hashtable
+    #>
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$Value = '',
+        [string]$PairDelimiter = ',',
+        [string]$KeyValueDelimiter = ':'
+    )
+
+    $results = @{}
+
+    if ([string]::IsNullOrEmpty($Value)) {
+        return $results
+    }
+
+    $elements = @($Value.Split($PairDelimiter))
+
+    foreach ($element in $elements) {
+        $keyValueArray = @($element.Split($KeyValueDelimiter))
+        if (@($keyValueArray).Count -ne 2) {
+            throw 'Input string not in correct format to convert to a hashtable!'
+        }
+        $key   = $keyValueArray[0]
+        $value = $keyValueArray[1]
+        $results[$key] = $value
+    }
+
+    return $results
+}
+
+function Test-PathCustom {
+    <#
+    .SYNOPSIS
+    Tests that a file exists.
+
+    .DESCRIPTION
+    Takes a string input that represents a file path. Checks that the file exists.
+    Throws if it does not.
+
+    .PARAMETER Path
+    The file path.
+
+    .OUTPUTS
+    Boolean
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
     )
 
-    if (-not (Microsoft.PowerShell.Management\Test-Path -LiteralPath $Path)) {
+    if (-not (Test-Path -LiteralPath $Path)) {
         throw "The file: $Path does not exist!"
     }
 
@@ -99,105 +154,98 @@ System.Boolean
 }
 
 function Read-Csv {
-<#
-.SYNOPSIS
-Reads a CSV file into a dataset.
+    <#
+    .SYNOPSIS
+    Reads a CSV file.
 
-.DESCRIPTION
-Uses Import-Csv to read a CSV file into an array of PSCustomObject.
+    .DESCRIPTION
+    Uses Import-Csv to read a CSV file. Throws if no rows are read.
 
-.PARAMETER Path
-The path to the CSV file.
+    .PARAMETER Path
+    The path to the CSV file.
 
-.PARAMETER Delimiter
-The delimiter character. Defaults to ','.
+    .PARAMETER Delimiter
+    The delimiter character.
 
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path,
-        [Parameter(Mandatory = $false)]
         [string]$Delimiter = ','
     )
 
-    $dataset = Import-Csv -LiteralPath $Path -Delimiter $Delimiter
-    if (@($dataset).Count -eq 0) {
+    $data = Import-Csv -LiteralPath $Path -Delimiter $Delimiter
+    if (-not $data -or @($data).Count -eq 0) {
         throw 'Csv file contains no data!'
     }
 
-    return @($dataset)
+    return @($data)
 }
 
 function Concatenate-Values {
-<#
-.SYNOPSIS
-Concatenates multiple column values from a row.
+    <#
+    .SYNOPSIS
+    Concatenates multiple column values into a single key string.
 
-.DESCRIPTION
-Builds a single string key from multiple column values, escaping the delimiter.
+    .DESCRIPTION
+    Used to create a composite key string from multiple columns.
 
-.PARAMETER Row
-The input row.
+    .PARAMETER Row
+    The input row.
 
-.PARAMETER ColumnArray
-The columns to include.
+    .PARAMETER ColumnArray
+    The columns to include.
 
-.PARAMETER Delimiter
-The delimiter used between values. Defaults to '|' (ASCII 124).
+    .PARAMETER Delimiter
+    The delimiter used in the concatenated key.
 
-.OUTPUTS
-System.String
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    String
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject]$Row,
         [Parameter(Mandatory = $true)]
         [string[]]$ColumnArray,
-        [Parameter(Mandatory = $false)]
         [string]$Delimiter = '|'
     )
 
     $values = @()
-    foreach ($column in $ColumnArray) {
-        $value = $Row.$column
-        if ($null -eq $value) {
-            $stringValue = ''
+    foreach ($col in $ColumnArray) {
+        $val = $Row.$col
+        if ($null -eq $val) {
+            $val = ''
         } else {
-            $stringValue = [string]$value
+            $val = [string]$val
         }
-
-        if ($stringValue -like "*$Delimiter*") {
-            $stringValue = $stringValue -replace [regex]::Escape($Delimiter), ('\' + $Delimiter)
+        if ($val -like "*$Delimiter*") {
+            $val = $val -replace [regex]::Escape($Delimiter), "\$Delimiter"
         }
-
-        $values += $stringValue
+        $values += $val
     }
 
     return ($values -join $Delimiter)
 }
 
 function Add-Key {
-<#
-.SYNOPSIS
-Adds a __key metadata column to a dataset.
+    <#
+    .SYNOPSIS
+    Adds a __key metadata column.
 
-.DESCRIPTION
-Concatenates key column values into a single __key column for each row.
+    .DESCRIPTION
+    Adds a metadata column '__key' to each row based on key columns.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER KeyColumns
-The key column names.
+    .PARAMETER KeyColumns
+    The key columns.
 
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
@@ -205,61 +253,52 @@ System.Management.Automation.PSCustomObject[]
         [string[]]$KeyColumns
     )
 
-    foreach ($row in @($Dataset)) {
+    foreach ($row in $Dataset) {
         $key = Concatenate-Values -Row $row -ColumnArray $KeyColumns
         $row | Add-Member -MemberType NoteProperty -Name '__key' -Value $key -Force
     }
 
-    return @($Dataset)
+    return $Dataset
 }
 
 function Get-ColumnNames {
-<#
-.SYNOPSIS
-Gets column names from a dataset.
+    <#
+    .SYNOPSIS
+    Gets column names from the first row of a dataset.
 
-.DESCRIPTION
-Reads the first row of a dataset and returns its property names.
+    .DESCRIPTION
+    Reads the first row of a dataset to get the column names. Assumes regular shape.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.OUTPUTS
-System.String[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    String[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset
     )
 
-    $first = @($Dataset)[0]
-    if ($null -eq $first) {
+    if (-not $Dataset -or @($Dataset).Count -eq 0) {
         return @()
     }
 
-    $names = $first.PSObject.Properties |
-        Where-Object { $_.MemberType -eq 'NoteProperty' } |
-        Select-Object -ExpandProperty Name
-
-    return @($names)
+    $first = $Dataset[0]
+    return @($first.PSObject.Properties.Name)
 }
 
 function Get-RowCount {
-<#
-.SYNOPSIS
-Gets the row count of a dataset.
+    <#
+    .SYNOPSIS
+    Gets the row count of a dataset.
 
-.DESCRIPTION
-Returns the number of elements in the dataset array.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER Dataset
-The input dataset.
-
-.OUTPUTS
-System.Int32
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    Int
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset
@@ -269,23 +308,22 @@ System.Int32
 }
 
 function Get-DistinctValues {
-<#
-.SYNOPSIS
-Gets distinct concatenated values for specified columns.
+    <#
+    .SYNOPSIS
+    Gets distinct values for a set of columns.
 
-.DESCRIPTION
-Uses Concatenate-Values to build keys and returns distinct values.
+    .DESCRIPTION
+    Returns distinct concatenated values for the specified columns.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER Columns
-The columns to use.
+    .PARAMETER Columns
+    The columns to use.
 
-.OUTPUTS
-System.String[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    String[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
@@ -294,6 +332,7 @@ System.String[]
     )
 
     $datasetColumns = Get-ColumnNames -Dataset $Dataset
+
     foreach ($column in $Columns) {
         if (-not ($datasetColumns -contains $column)) {
             throw "Column `$column` does not exist in dataset."
@@ -301,7 +340,8 @@ System.String[]
     }
 
     $ht = @{}
-    foreach ($row in @($Dataset)) {
+
+    foreach ($row in $Dataset) {
         $value = Concatenate-Values -Row $row -ColumnArray $Columns
         $ht[$value] = $row
     }
@@ -310,28 +350,27 @@ System.String[]
 }
 
 function Check-KeyUnique {
-<#
-.SYNOPSIS
-Checks that the __key column is unique.
+    <#
+    .SYNOPSIS
+    Checks that __key is unique.
 
-.DESCRIPTION
-Compares row count to distinct __key count and throws if not equal.
+    .DESCRIPTION
+    Ensures that the '__key' column contains unique values.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.OUTPUTS
-System.Boolean
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    Boolean
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset
     )
 
     $datasetRowCount = Get-RowCount -Dataset $Dataset
-    $keys = Get-DistinctValues -Dataset $Dataset -Columns @('__key')
-    $keyRowCount = @($keys).Count
+    $distinctKeys    = Get-DistinctValues -Dataset $Dataset -Columns @('__key')
+    $keyRowCount     = @($distinctKeys).Count
 
     if ($datasetRowCount -ne $keyRowCount) {
         throw 'The key column does not contain all unique values!'
@@ -341,23 +380,22 @@ System.Boolean
 }
 
 function Remove-Columns {
-<#
-.SYNOPSIS
-Removes unwanted columns from a dataset.
+    <#
+    .SYNOPSIS
+    Removes unwanted columns.
 
-.DESCRIPTION
-Removes specified columns from each row, except __key.
+    .DESCRIPTION
+    Removes columns listed in ExcludeColumns from each row, except '__key'.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER ExcludeColumns
-The columns to remove.
+    .PARAMETER ExcludeColumns
+    The columns to remove.
 
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
@@ -365,77 +403,66 @@ System.Management.Automation.PSCustomObject[]
         [string[]]$ExcludeColumns
     )
 
-    $columnsToRemove = @($ExcludeColumns | Where-Object { $_ -ne '__key' })
+    $colsToRemove = $ExcludeColumns | Where-Object { $_ -ne '__key' }
 
-    foreach ($column in $columnsToRemove) {
-        foreach ($row in @($Dataset)) {
+    foreach ($column in $colsToRemove) {
+        foreach ($row in $Dataset) {
             if ($row.PSObject.Properties.Name -contains $column) {
                 $row.PSObject.Properties.Remove($column) | Out-Null
             }
         }
     }
 
-    return @($Dataset)
+    return $Dataset
 }
 
 function Trim-Dataset {
-<#
-.SYNOPSIS
-Trims all string cells in a dataset.
+    <#
+    .SYNOPSIS
+    Trims all string cells.
 
-.DESCRIPTION
-Iterates all properties and trims string values.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER Dataset
-The input dataset.
-
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset
     )
 
-    foreach ($row in @($Dataset)) {
+    foreach ($row in $Dataset) {
         foreach ($prop in $row.PSObject.Properties) {
-            $name = $prop.Name
+            $name  = $prop.Name
             $value = $row.$name
-            if ($null -eq $value) {
-                continue
-            }
-
+            if ($null -eq $value) { continue }
             if ($value -is [string]) {
                 $row.$name = $value.Trim()
             }
         }
     }
 
-    return @($Dataset)
+    return $Dataset
 }
 
 function Get-TopNValues {
-<#
-.SYNOPSIS
-Gets the top N values of a column.
+    <#
+    .SYNOPSIS
+    Gets top N values for a column.
 
-.DESCRIPTION
-Returns up to TopN values from the specified column as strings.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER ColumnName
+    The column name.
 
-.PARAMETER ColumnName
-The column name.
+    .PARAMETER TopN
+    Number of values.
 
-.PARAMETER TopN
-The number of values to return.
-
-.OUTPUTS
-System.String[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    String[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
@@ -446,33 +473,35 @@ System.String[]
     )
 
     $rowCount = Get-RowCount -Dataset $Dataset
-    $output = @()
-    $i = [Math]::Min($TopN, $rowCount)
+    $i        = [Math]::Min($TopN, $rowCount)
+    $output   = @()
 
     for ($j = 0; $j -lt $i; $j++) {
-        $row = @($Dataset)[$j]
-        $value = $row.$ColumnName
-        $output += [string]$value
+        $value = $Dataset[$j].$ColumnName
+        if ($null -ne $value) {
+            $output += [string]$value
+        } else {
+            $output += ''
+        }
     }
 
-    return @($output)
+    return $output
 }
 
 function Get-CellDataType {
-<#
-.SYNOPSIS
-Determines the data type of a string cell value.
+    <#
+    .SYNOPSIS
+    Determines the data type of a string cell.
 
-.DESCRIPTION
-Uses regex rules to classify the value into DataTypeEnum.
+    .DESCRIPTION
+    Uses regex rules to determine the data type.
 
-.PARAMETER Value
-The input value.
+    .PARAMETER Value
+    The input value.
 
-.OUTPUTS
-DataTypeEnum
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    DataTypeEnum
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Value
@@ -504,37 +533,35 @@ DataTypeEnum
 }
 
 function Apply-NullValues {
-<#
-.SYNOPSIS
-Replaces null-like values with $null.
+    <#
+    .SYNOPSIS
+    Applies null-like values.
 
-.DESCRIPTION
-Converts configured null-like values and empty strings to $null.
+    .DESCRIPTION
+    Replaces null-like values with $null. Empty strings are always treated as null.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER NullValuesArray
-The null-like values.
+    .PARAMETER NullValuesArray
+    The null-like values.
 
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
-        [Parameter(Mandatory = $false)]
         [string[]]$NullValuesArray = $null
     )
 
     $columnNames = Get-ColumnNames -Dataset $Dataset
 
     foreach ($columnName in $columnNames) {
-        foreach ($row in @($Dataset)) {
+        foreach ($row in $Dataset) {
             $value = $row.$columnName
 
-            if ($null -ne $NullValuesArray -and @($NullValuesArray).Count -gt 0) {
+            if ($NullValuesArray -ne $null -and @($NullValuesArray).Count -gt 0) {
                 if ($NullValuesArray -contains $value) {
                     $row.$columnName = $null
                     continue
@@ -547,27 +574,23 @@ System.Management.Automation.PSCustomObject[]
         }
     }
 
-    return @($Dataset)
+    return $Dataset
 }
 
 function Add-RowId {
-<#
-.SYNOPSIS
-Adds an auto-increment row ID column.
+    <#
+    .SYNOPSIS
+    Adds an auto-increment row id column.
 
-.DESCRIPTION
-Optionally adds a row ID column starting at 1.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER RowIdName
+    The row id column name.
 
-.PARAMETER RowIdName
-The name of the row ID column.
-
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
@@ -576,7 +599,7 @@ System.Management.Automation.PSCustomObject[]
     )
 
     if ([string]::IsNullOrEmpty($RowIdName)) {
-        return @($Dataset)
+        return $Dataset
     }
 
     $columnNames = Get-ColumnNames -Dataset $Dataset
@@ -585,55 +608,51 @@ System.Management.Automation.PSCustomObject[]
     }
 
     $i = 1
-    foreach ($row in @($Dataset)) {
+    foreach ($row in $Dataset) {
         $row | Add-Member -MemberType NoteProperty -Name $RowIdName -Value $i -Force
         $i++
     }
 
-    return @($Dataset)
+    return $Dataset
 }
 
 function Get-DataTypes {
-<#
-.SYNOPSIS
-Determines data types for all columns in a dataset.
+    <#
+    .SYNOPSIS
+    Gets data types for all columns.
 
-.DESCRIPTION
-Initialises all columns as STRING, optionally auto-detects types, then applies overrides.
+    .DESCRIPTION
+    Uses auto-detection and/or overrides to determine column types.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER AutoDetectTypes
-Whether to auto-detect types.
+    .PARAMETER AutoDetectTypes
+    Whether to auto-detect types.
 
-.PARAMETER ScanRows
-Number of rows to scan when auto-detecting.
+    .PARAMETER ScanRows
+    Number of rows to scan.
 
-.PARAMETER ColumnTypesArray
-Optional overrides in 'column:dataType' format.
+    .PARAMETER ColumnTypesHashtable
+    Column type overrides.
 
-.OUTPUTS
-System.Collections.Hashtable
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    Hashtable
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
-        [Parameter(Mandatory = $false)]
         [bool]$AutoDetectTypes = $false,
-        [Parameter(Mandatory = $false)]
         [int]$ScanRows = $null,
-        [Parameter(Mandatory = $false)]
-        [string[]]$ColumnTypesArray = $null
+        [hashtable]$ColumnTypesHashtable = $null
     )
 
-    if ($AutoDetectTypes -and (($null -eq $ScanRows) -or ($ScanRows -lt 1))) {
-        throw 'If AutoDetectTypes is true, ScanRows must be non-null and > 0.'
+    if ($AutoDetectTypes -and (($null -eq $ScanRows) -or $ScanRows -lt 1)) {
+        throw 'AutoDetectTypes is true but ScanRows is null or less than 1.'
     }
 
     $columnNames = Get-ColumnNames -Dataset $Dataset
-    $output = @{}
+    $output      = @{}
 
     foreach ($column in $columnNames) {
         $output[$column] = [DataTypeEnum]::STRING
@@ -641,28 +660,21 @@ System.Collections.Hashtable
 
     if ($AutoDetectTypes) {
         foreach ($columnName in $columnNames) {
-            $values = Get-TopNValues -Dataset $Dataset -ColumnName $columnName -TopN $ScanRows
+            $values    = Get-TopNValues -Dataset $Dataset -ColumnName $columnName -TopN $ScanRows
             $dataTypes = @()
 
             foreach ($value in $values) {
-                if ([string]::IsNullOrEmpty($value)) {
-                    continue
-                }
                 $dt = Get-CellDataType -Value ([string]$value)
                 $dataTypes += $dt
             }
 
-            if (@($dataTypes).Count -eq 0) {
-                continue
-            }
-
-            if (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::BOOLEAN }).Count -eq 0) {
+            if (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::BOOLEAN }).Count -eq 0 -and @($dataTypes).Count -gt 0) {
                 $output[$columnName] = [DataTypeEnum]::BOOLEAN
-            } elseif (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::INTEGER }).Count -eq 0) {
+            } elseif (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::INTEGER }).Count -eq 0 -and @($dataTypes).Count -gt 0) {
                 $output[$columnName] = [DataTypeEnum]::INTEGER
-            } elseif (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::DECIMAL }).Count -eq 0) {
+            } elseif (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::DECIMAL }).Count -eq 0 -and @($dataTypes).Count -gt 0) {
                 $output[$columnName] = [DataTypeEnum]::DECIMAL
-            } elseif (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::DATETIME }).Count -eq 0) {
+            } elseif (@($dataTypes | Where-Object { $_ -ne [DataTypeEnum]::DATETIME }).Count -eq 0 -and @($dataTypes).Count -gt 0) {
                 $output[$columnName] = [DataTypeEnum]::DATETIME
             } else {
                 $output[$columnName] = [DataTypeEnum]::STRING
@@ -670,22 +682,9 @@ System.Collections.Hashtable
         }
     }
 
-    if ($null -ne $ColumnTypesArray -and @($ColumnTypesArray).Count -gt 0) {
-        foreach ($element in $ColumnTypesArray) {
-            if ([string]::IsNullOrWhiteSpace($element)) {
-                continue
-            }
-
-            $columnDataType = $element.Split(':')
-            if ($columnDataType.Count -ne 2) {
-                throw "Invalid ColumnTypes element: '$element'. Expected format 'column:dataType'."
-            }
-
-            $key = $columnDataType[0]
-            $valueString = $columnDataType[1]
-
-            $value = [DataTypeEnum]::Parse([DataTypeEnum], $valueString)
-            $output[$key] = $value
+    if ($ColumnTypesHashtable -ne $null -and @($ColumnTypesHashtable.Keys).Count -gt 0) {
+        foreach ($key in $ColumnTypesHashtable.Keys) {
+            $output[$key] = [DataTypeEnum]::Parse([DataTypeEnum], $ColumnTypesHashtable[$key])
         }
     }
 
@@ -693,23 +692,19 @@ System.Collections.Hashtable
 }
 
 function Cast-Dataset {
-<#
-.SYNOPSIS
-Casts dataset columns to specified types.
+    <#
+    .SYNOPSIS
+    Casts dataset columns to specified types.
 
-.DESCRIPTION
-Uses DataTypeEnum to cast non-null values to the correct .NET types.
+    .PARAMETER Dataset
+    The dataset.
 
-.PARAMETER Dataset
-The input dataset.
+    .PARAMETER ColumnTypes
+    Hashtable of column types.
 
-.PARAMETER ColumnTypes
-Hashtable of column name to DataTypeEnum.
-
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$Dataset,
@@ -717,84 +712,180 @@ System.Management.Automation.PSCustomObject[]
         [hashtable]$ColumnTypes
     )
 
-    foreach ($columnName in @($ColumnTypes.Keys)) {
-        $typeEnum = $ColumnTypes[$columnName]
+    foreach ($columnName in $ColumnTypes.Keys) {
+        $type = $ColumnTypes[$columnName]
 
-        foreach ($row in @($Dataset)) {
+        foreach ($row in $Dataset) {
             $value = $row.$columnName
-            if ($null -eq $value) {
-                continue
-            }
+            if ($null -eq $value) { continue }
 
-            switch ($typeEnum) {
+            switch ($type) {
                 ([DataTypeEnum]::BOOLEAN) {
-                    [bool]$parsed = $false
-                    if (-not [bool]::TryParse([string]$value, [ref]$parsed)) {
+                    $parsed = $false
+                    $ok = [bool]::TryParse([string]$value, [ref]$parsed)
+                    if (-not $ok) {
                         throw "Value: $value cannot be converted to a BOOLEAN."
                     }
                     $row.$columnName = $parsed
                 }
                 ([DataTypeEnum]::INTEGER) {
-                    [int]$parsed = 0
-                    if (-not [int]::TryParse([string]$value, [ref]$parsed)) {
+                    $parsed = 0
+                    $ok = [int]::TryParse([string]$value, [ref]$parsed)
+                    if (-not $ok) {
                         throw "Value: $value cannot be converted to an INTEGER."
                     }
                     $row.$columnName = $parsed
                 }
                 ([DataTypeEnum]::DECIMAL) {
-                    [decimal]$parsed = 0
-                    if (-not [decimal]::TryParse([string]$value, [ref]$parsed)) {
+                    $parsed = [decimal]0
+                    $ok = [decimal]::TryParse([string]$value, [ref]$parsed)
+                    if (-not $ok) {
                         throw "Value: $value cannot be converted to a DECIMAL."
                     }
                     $row.$columnName = $parsed
                 }
                 ([DataTypeEnum]::DATETIME) {
-                    [datetime]$parsed = [datetime]::MinValue
-                    $formats = [string[]]@(
-                        "yyyy-MM-dd",
-                        "yyyy-MM-ddTHH:mm",
-                        "yyyy-MM-ddTHH:mm:ss",
-                        "yyyy-MM-ddTHH:mm:ss.fff",
-                        "yyyy-MM-dd HH:mm",
-                        "yyyy-MM-dd HH:mm:ss",
-                        "yyyy-MM-dd HH:mm:ss.fff"
-                    )
-                    if (-not [datetime]::TryParseExact([string]$value, $formats, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal, [ref]$parsed)) {
+                    $parsed = [datetime]::MinValue
+                    $ok = [datetime]::TryParse([string]$value, [ref]$parsed)
+                    if (-not $ok) {
                         throw "Value: $value cannot be converted to a DATETIME."
                     }
                     $row.$columnName = $parsed
                 }
                 ([DataTypeEnum]::STRING) {
-                    continue
+                    # no-op
                 }
                 default {
-                    continue
+                    # no-op
                 }
             }
         }
     }
 
-    return @($Dataset)
+    return $Dataset
+}
+
+function Round-Dataset {
+    <#
+    .SYNOPSIS
+    Rounds data in a dataset according to rules.
+
+    .PARAMETER Dataset
+    The dataset.
+
+    .PARAMETER DatasetColumnTypes
+    Column types.
+
+    .PARAMETER RoundRulesHashtable
+    Rounding rules.
+
+    .OUTPUTS
+    PSCustomObject[]
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject[]]$Dataset,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$DatasetColumnTypes,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$RoundRulesHashtable
+    )
+
+    foreach ($key in $RoundRulesHashtable.Keys) {
+        if (-not ($DatasetColumnTypes.Keys -contains $key)) {
+            throw "The rounding column: $key does not exist in the dataset."
+        }
+
+        $rule = $RoundRulesHashtable[$key]
+        $pattern = '^(?<size>\d{1,2})(?<type>sf|dp|se|mi|hr|dy)$'
+        $match = [regex]::Match($rule, $pattern)
+
+        if (-not $match.Success) {
+            throw "Rule: $rule does not match any rounding pattern!"
+        }
+
+        $size = [int]$match.Groups['size'].Value
+        $type = $match.Groups['type'].Value
+
+        if ($size -lt 1 -or $size -gt 99) {
+            throw "Rounding size $size is out of range (1-99)."
+        }
+
+        $columnType = $DatasetColumnTypes[$key]
+
+        $supported = switch ($type) {
+            'sf' { @([DataTypeEnum]::INTEGER, [DataTypeEnum]::DECIMAL) }
+            'dp' { @([DataTypeEnum]::DECIMAL) }
+            'se' { @([DataTypeEnum]::DATETIME) }
+            'mi' { @([DataTypeEnum]::DATETIME) }
+            'hr' { @([DataTypeEnum]::DATETIME) }
+            'dy' { @([DataTypeEnum]::DATETIME) }
+        }
+
+        if (-not ($supported -contains $columnType)) {
+            throw "Rounding by $type is not support for column type $columnType"
+        }
+
+        foreach ($row in $Dataset) {
+            $val = $row.$key
+            if ($null -eq $val) { continue }
+
+            switch ($type) {
+                'sf' {
+                    # Significant figures rounding for numeric types
+                    $num = [double]$val
+                    if ($num -eq 0) { continue }
+                    $scale = [math]::Pow(10, $size - 1 - [math]::Floor([math]::Log10([math]::Abs($num))))
+                    $row.$key = [math]::Round($num * $scale) / $scale
+                }
+                'dp' {
+                    $row.$key = [math]::Round([double]$val, $size)
+                }
+                'se' {
+                    $dt = [datetime]$val
+                    $ticksPerUnit = [timespan]::FromSeconds($size).Ticks
+                    $roundedTicks = [math]::Round($dt.Ticks / $ticksPerUnit) * $ticksPerUnit
+                    $row.$key = [datetime]::new($roundedTicks)
+                }
+                'mi' {
+                    $dt = [datetime]$val
+                    $ticksPerUnit = [timespan]::FromMinutes($size).Ticks
+                    $roundedTicks = [math]::Round($dt.Ticks / $ticksPerUnit) * $ticksPerUnit
+                    $row.$key = [datetime]::new($roundedTicks)
+                }
+                'hr' {
+                    $dt = [datetime]$val
+                    $ticksPerUnit = [timespan]::FromHours($size).Ticks
+                    $roundedTicks = [math]::Round($dt.Ticks / $ticksPerUnit) * $ticksPerUnit
+                    $row.$key = [datetime]::new($roundedTicks)
+                }
+                'dy' {
+                    $dt = [datetime]$val
+                    $ticksPerUnit = [timespan]::FromDays($size).Ticks
+                    $roundedTicks = [math]::Round($dt.Ticks / $ticksPerUnit) * $ticksPerUnit
+                    $row.$key = [datetime]::new($roundedTicks)
+                }
+            }
+        }
+    }
+
+    return $Dataset
 }
 
 function Compare-Schemas {
-<#
-.SYNOPSIS
-Compares two dataset schemas.
+    <#
+    .SYNOPSIS
+    Compares two schemas.
 
-.DESCRIPTION
-Builds a SchemaComparisonResult array describing column type differences.
+    .PARAMETER LeftDatasetColumnTypes
+    Left schema.
 
-.PARAMETER LeftDatasetColumnTypes
-Hashtable of left column types.
+    .PARAMETER RightDatasetColumnTypes
+    Right schema.
 
-.PARAMETER RightDatasetColumnTypes
-Hashtable of right column types.
-
-.OUTPUTS
-SchemaComparisonResult[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    SchemaComparisonResult[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [hashtable]$LeftDatasetColumnTypes,
@@ -804,44 +895,46 @@ SchemaComparisonResult[]
 
     $results = @()
 
-    foreach ($leftKey in @($LeftDatasetColumnTypes.Keys)) {
-        $leftType = $LeftDatasetColumnTypes[$leftKey]
-        $result = [SchemaComparisonResult]::new($leftKey, $leftType, [DataTypeEnum]::NONE)
+    foreach ($leftKey in $LeftDatasetColumnTypes.Keys) {
+        $result = [SchemaComparisonResult]::new(
+            $leftKey,
+            $LeftDatasetColumnTypes[$leftKey],
+            [DataTypeEnum]::NONE
+        )
         $results += $result
     }
 
-    foreach ($rightKey in @($RightDatasetColumnTypes.Keys)) {
-        $rightType = $RightDatasetColumnTypes[$rightKey]
+    foreach ($rightKey in $RightDatasetColumnTypes.Keys) {
         $existing = $results | Where-Object { $_.ColumnName -eq $rightKey }
-        if ($null -ne $existing) {
-            $existing.RightType = $rightType
+        if ($existing) {
+            $existing.RightType = $RightDatasetColumnTypes[$rightKey]
         } else {
-            $result = [SchemaComparisonResult]::new($rightKey, [DataTypeEnum]::NONE, $rightType)
+            $result = [SchemaComparisonResult]::new(
+                $rightKey,
+                [DataTypeEnum]::NONE,
+                $RightDatasetColumnTypes[$rightKey]
+            )
             $results += $result
         }
     }
 
-    return @($results)
+    return $results
 }
 
 function Compare-Datasets {
-<#
-.SYNOPSIS
-Compares two datasets row-by-row and column-by-column.
+    <#
+    .SYNOPSIS
+    Compares two datasets row-by-row and column-by-column.
 
-.DESCRIPTION
-Uses __key to align rows and reports key-only and cell differences.
+    .PARAMETER LeftDataset
+    Left dataset.
 
-.PARAMETER LeftDataset
-The left dataset.
+    .PARAMETER RightDataset
+    Right dataset.
 
-.PARAMETER RightDataset
-The right dataset.
-
-.OUTPUTS
-System.Management.Automation.PSCustomObject[]
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    PSCustomObject[]
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$LeftDataset,
@@ -851,147 +944,118 @@ System.Management.Automation.PSCustomObject[]
 
     $results = @()
 
-    $htLeft = @{}
-    foreach ($row in @($LeftDataset)) {
-        $key = $row.'__key'
-        $htLeft[$key] = $row
+    $htLeft  = @{}
+    foreach ($row in $LeftDataset) {
+        $htLeft[$row.__key] = $row
     }
 
     $htRight = @{}
-    foreach ($row in @($RightDataset)) {
-        $key = $row.'__key'
-        $htRight[$key] = $row
+    foreach ($row in $RightDataset) {
+        $htRight[$row.__key] = $row
     }
 
-    foreach ($key in @($htLeft.Keys)) {
+    foreach ($key in $htLeft.Keys) {
         if (-not $htRight.ContainsKey($key)) {
             $results += [pscustomobject]@{
                 CompareType = [CompareTypeEnum]::KEY_LEFT_ONLY
                 ColumnName  = $null
-                KeyValues   = [string]$key
-                Left        = [string]$null
-                Right       = [string]$null
+                KeyValues   = $key
+                Left        = $null
+                Right       = $null
             }
         }
     }
 
-    foreach ($key in @($htRight.Keys)) {
+    foreach ($key in $htRight.Keys) {
         if (-not $htLeft.ContainsKey($key)) {
             $results += [pscustomobject]@{
                 CompareType = [CompareTypeEnum]::KEY_RIGHT_ONLY
                 ColumnName  = $null
-                KeyValues   = [string]$key
-                Left        = [string]$null
-                Right       = [string]$null
+                KeyValues   = $key
+                Left        = $null
+                Right       = $null
             }
         }
     }
 
-    foreach ($key in @($htLeft.Keys)) {
-        if (-not $htRight.ContainsKey($key)) {
-            continue
-        }
+    foreach ($key in $htLeft.Keys) {
+        if ($htRight.ContainsKey($key)) {
+            $leftRow  = $htLeft[$key]
+            $rightRow = $htRight[$key]
 
-        $leftRow  = $htLeft[$key]
-        $rightRow = $htRight[$key]
+            foreach ($prop in $leftRow.PSObject.Properties) {
+                if ($prop.Name -eq '__key') { continue }
 
-        foreach ($prop in $leftRow.PSObject.Properties) {
-            $property = $prop.Name
-            if ($property -eq '__key') {
-                continue
-            }
+                $leftVal  = $leftRow.$($prop.Name)
+                $rightVal = $rightRow.$($prop.Name)
 
-            $leftValue  = $leftRow.$property
-            $rightValue = $rightRow.$property
-
-            if ($leftValue -is [datetime] -and $rightValue -is [datetime]) {
-                $leftString  = $leftValue.ToUniversalTime().ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)
-                $rightString = $rightValue.ToUniversalTime().ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)
-                if ($leftString -ne $rightString) {
+                if ($leftVal -ne $rightVal) {
                     $results += [pscustomobject]@{
                         CompareType = [CompareTypeEnum]::DIFFERENT
-                        ColumnName  = $property
-                        KeyValues   = [string]$key
-                        Left        = [string]$leftValue
-                        Right       = [string]$rightValue
-                    }
-                }
-            } else {
-                if ($leftValue -ne $rightValue) {
-                    $results += [pscustomobject]@{
-                        CompareType = [CompareTypeEnum]::DIFFERENT
-                        ColumnName  = $property
-                        KeyValues   = [string]$key
-                        Left        = [string]$leftValue
-                        Right       = [string]$rightValue
+                        ColumnName  = $prop.Name
+                        KeyValues   = $key
+                        Left        = [string]$leftVal
+                        Right       = [string]$rightVal
                     }
                 }
             }
         }
     }
 
-    return @($results)
+    return $results
 }
 
 function Output-SchemaResults {
-<#
-.SYNOPSIS
-Outputs schema comparison results.
+    <#
+    .SYNOPSIS
+    Outputs schema comparison results.
 
-.DESCRIPTION
-Prints schema results and returns whether schemas match.
+    .PARAMETER SchemaComparisonResults
+    The schema comparison results.
 
-.PARAMETER SchemaComparisonResults
-The schema comparison results.
-
-.OUTPUTS
-System.Boolean
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    Boolean
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [SchemaComparisonResult[]]$SchemaComparisonResults
     )
 
-    Write-Host '' -ForegroundColor Cyan
-    Write-Host '--------------' -ForegroundColor Cyan
-    Write-Host 'SCHEMA RESULTS' -ForegroundColor Cyan
-    Write-Host '--------------' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '--------------'
+    Write-Host 'SCHEMA RESULTS' 
+    Write-Host '--------------'
 
-    $sorted = $SchemaComparisonResults | Sort-Object -Property ColumnName
+    $sorted = $SchemaComparisonResults | Sort-Object ColumnName
     $sorted | Format-Table -AutoSize | Out-Host
 
-    $differences = $sorted | Where-Object { $_.LeftType -ne $_.RightType }
-    if (@($differences).Count -gt 0) {
-        Write-Host 'Schema differences found. Row-level comparison not performed' -ForegroundColor Cyan
+    $diffs = $SchemaComparisonResults | Where-Object { $_.LeftType -ne $_.RightType }
+    if ($diffs) {
+        Write-Host 'Schema differences found. Row-level comparison not performed'
         return $false
     } else {
-        Write-Host 'Schemas match. Continuing to perform row-by-row comparison...' -ForegroundColor Cyan
+        Write-Host 'Schemas match. Continuing to perform row-by-row comparison...'
         return $true
     }
 }
 
 function Output-Results {
-<#
-.SYNOPSIS
-Outputs comparison results.
+    <#
+    .SYNOPSIS
+    Outputs comparison results.
 
-.DESCRIPTION
-Outputs either detailed or summarised comparison results.
+    .PARAMETER ComparisonResults
+    The comparison results.
 
-.PARAMETER ComparisonResults
-The comparison results.
+    .PARAMETER SummariseResults
+    Whether to summarise.
 
-.PARAMETER SummariseResults
-If true, outputs grouped summary; otherwise detailed rows.
+    .PARAMETER DetailedRows
+    Max detailed rows.
 
-.PARAMETER DetailedRows
-Maximum number of detailed rows to output.
-
-.OUTPUTS
-None
-#>
-    [CmdletBinding()]
+    .OUTPUTS
+    None
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$ComparisonResults,
@@ -1001,14 +1065,14 @@ None
         [int]$DetailedRows
     )
 
-    Write-Host '' -ForegroundColor Cyan
-    Write-Host '-----------------' -ForegroundColor Cyan
-    Write-Host 'ROW LEVEL RESULTS' -ForegroundColor Cyan
-    Write-Host '-----------------' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '-----------------'
+    Write-Host 'ROW LEVEL RESULTS'
+    Write-Host '-----------------'
 
     if (-not $SummariseResults) {
         $ordered = $ComparisonResults |
-            Sort-Object -Property CompareType, ColumnName, KeyValues
+            Sort-Object CompareType, ColumnName, KeyValues
 
         if ($DetailedRows -gt 0) {
             $ordered = $ordered | Select-Object -First $DetailedRows
@@ -1016,136 +1080,149 @@ None
 
         $ordered | Format-Table -AutoSize | Out-Host
     } else {
+        $resultsGrouped = @()
+
         $normalized = $ComparisonResults | ForEach-Object {
             [pscustomobject]@{
                 CompareType = $_.CompareType
-                ColumnName  = if ($null -eq $_.ColumnName) { '' } else { [string]$_.ColumnName }
+                ColumnName  = if ($null -eq $_.ColumnName) { '' } else { $_.ColumnName }
             }
         }
 
-        $grouped = $normalized |
-            Group-Object -Property CompareType, ColumnName |
-            ForEach-Object {
-                [pscustomobject]@{
-                    CompareType = $_.Group[0].CompareType
-                    ColumnName  = $_.Group[0].ColumnName
-                    Count       = [string]$_.Count
-                }
-            } |
-            Sort-Object -Property CompareType, ColumnName
+        $groups = $normalized | Group-Object CompareType, ColumnName
 
-        $grouped | Format-Table -AutoSize | Out-Host
+        foreach ($g in $groups) {
+            $resultsGrouped += [pscustomobject]@{
+                CompareType = $g.Group[0].CompareType
+                ColumnName  = $g.Group[0].ColumnName
+                Count       = [string](@($g.Group).Count)
+            }
+        }
+
+        $resultsGrouped =
+            $resultsGrouped | Sort-Object CompareType, ColumnName
+
+        $resultsGrouped | Format-Table -AutoSize | Out-Host
     }
 }
 
+# =========================
+# Top-Level Function
+# =========================
+
 function Compare-Csv {
-<#
-.SYNOPSIS
-Compares two CSV files.
+    <#
+    .SYNOPSIS
+    Compares two CSV files.
 
-.DESCRIPTION
-Top-level function that orchestrates CSV comparison using helper functions.
+    .DESCRIPTION
+    Orchestrates the full CSV comparison process as per the specification.
 
-.PARAMETER Left
-Full path to the left CSV file.
+    .PARAMETER Left
+    Left CSV path.
 
-.PARAMETER Right
-Full path to the right CSV file.
+    .PARAMETER Right
+    Right CSV path.
 
-.PARAMETER Delimiter
-CSV delimiter. Defaults to ','.
+    .PARAMETER KeyColumns
+    Comma-separated key columns.
 
-.PARAMETER RowIdName
-Optional row ID column name.
+    .PARAMETER Delimiter
+    CSV delimiter.
 
-.PARAMETER KeyColumns
-Comma-separated list of key columns.
+    .PARAMETER RowIdName
+    Optional row id column name.
 
-.PARAMETER ExcludeColumns
-Comma-separated list of columns to exclude.
+    .PARAMETER ExcludeColumns
+    Comma-separated columns to exclude.
 
-.PARAMETER ColumnTypes
-Column type overrides in 'column:type' format.
+    .PARAMETER NullValues
+    Comma-separated null-like values.
 
-.PARAMETER NullValues
-Comma-separated list of null-like values.
+    .PARAMETER ColumnTypes
+    Column type overrides.
 
-.PARAMETER ApplyTrim
-If true, trims string values.
+    .PARAMETER RoundRules
+    Rounding rules.
 
-.PARAMETER AutoDetectTypes
-If true, auto-detects column types.
+    .PARAMETER ApplyTrim
+    Whether to trim strings.
 
-.PARAMETER ScanRows
-Number of rows to scan for type detection.
+    .PARAMETER AutoDetectTypes
+    Whether to auto-detect types.
 
-.PARAMETER SummariseResults
-If true, outputs summary; otherwise detailed rows.
+    .PARAMETER ScanRows
+    Number of rows to scan for type detection.
 
-.PARAMETER DetailedRows
-Maximum number of detailed rows to output.
+    .PARAMETER SummariseResults
+    Whether to summarise results.
 
-.OUTPUTS
-None
-#>
-    [CmdletBinding()]
+    .PARAMETER DetailedRows
+    Max detailed rows.
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Left,
         [Parameter(Mandatory = $true)]
         [string]$Right,
-        [Parameter(Mandatory = $false)]
-        [string]$Delimiter = ',',
-        [Parameter(Mandatory = $false)]
-        [string]$RowIdName = [string]::Empty,
         [Parameter(Mandatory = $true)]
         [string]$KeyColumns,
-        [Parameter(Mandatory = $false)]
-        [string]$ExcludeColumns = [string]::Empty,
-        [Parameter(Mandatory = $false)]
-        [string]$ColumnTypes = [string]::Empty,
-        [Parameter(Mandatory = $false)]
-        [string]$NullValues = [string]::Empty,
-        [Parameter(Mandatory = $false)]
-        [bool]$ApplyTrim = $false,
-        [Parameter(Mandatory = $false)]
-        [bool]$AutoDetectTypes = $false,
-        [Parameter(Mandatory = $false)]
-        [int]$ScanRows = $null,
-        [Parameter(Mandatory = $false)]
-        [bool]$SummariseResults = $true,
-        [Parameter(Mandatory = $false)]
-        [int]$DetailedRows = 0
+        [string]$Delimiter        = ',',
+        [string]$RowIdName        = [string]::Empty,
+        [string]$ExcludeColumns   = [string]::Empty,
+        [string]$NullValues       = [string]::Empty,
+        [string]$ColumnTypes      = [string]::Empty,
+        [string]$RoundRules       = [string]::Empty,
+        [bool]$ApplyTrim          = $false,
+        [bool]$AutoDetectTypes    = $false,
+        [int]$ScanRows            = $null,
+        [bool]$SummariseResults   = $true,
+        [int]$DetailedRows        = 0
     )
 
     try {
+        # Validation
         Write-Log "Begin Step: Validate KeyColumns"
-        $keyColumnsArray = Parse-List -Value $KeyColumns -Delimiter $Delimiter
+        $keyColumnsArray = @()
+        if ($KeyColumns -ne '') {
+            $keyColumnsArray = Parse-List -Value $KeyColumns
+        }
         Write-Log "End Step: Validate KeyColumns"
 
         Write-Log "Begin Step: Validate ExcludeColumns"
-        $excludeColumnsArray = Parse-List -Value $ExcludeColumns -Delimiter $Delimiter
+        $excludeColumnsArray = @()
+        if ($ExcludeColumns -ne '') {
+            $excludeColumnsArray = Parse-List -Value $ExcludeColumns
+        }
         Write-Log "End Step: Validate ExcludeColumns"
 
         Write-Log "Begin Step: Validate NullValues"
-        $nullValuesArray = Parse-List -Value $NullValues -Delimiter $Delimiter
+        $nullValuesArray = @()
+        if ($NullValues -ne '') {
+            $nullValuesArray = Parse-List -Value $NullValues
+        }
         Write-Log "End Step: Validate NullValues"
 
         Write-Log "Begin Step: Validate ColumnTypes"
-        $columnTypesArray = @()
-        if ($ColumnTypes -ne '') {
-            $columnTypesArray = Parse-List -Value $ColumnTypes -Delimiter $Delimiter
-        }
+        $columnTypesHashtable = Parse-Hashtable -Value $ColumnTypes
         Write-Log "End Step: Validate ColumnTypes"
 
+        Write-Log "Begin Step: Validate RoundRules"
+        $RoundRulesHashtable = @{}
+        if ($RoundRules -ne '') {
+            $RoundRulesHashtable = Parse-Hashtable -Value $RoundRules
+        }
+        Write-Log "End Step: Validate RoundRules"
+
         Write-Log "Begin Step: Validate Left Path"
-        Test-Path -Path $Left | Out-Null
+        Test-PathCustom -Path $Left | Out-Null
         Write-Log "End Step: Validate Left Path"
 
         Write-Log "Begin Step: Validate Right Path"
-        Test-Path -Path $Right | Out-Null
+        Test-PathCustom -Path $Right | Out-Null
         Write-Log "End Step: Validate Right Path"
 
+        # Read
         Write-Log "Begin Step: Read Left File"
         $leftDataset = Read-Csv -Path $Left -Delimiter $Delimiter
         Write-Log "End Step: Read Left File"
@@ -1154,6 +1231,7 @@ None
         $rightDataset = Read-Csv -Path $Right -Delimiter $Delimiter
         Write-Log "End Step: Read Right File"
 
+        # Processing
         Write-Log "Begin Step: Remove Left Columns"
         $leftDataset = Remove-Columns -Dataset $leftDataset -ExcludeColumns $excludeColumnsArray
         Write-Log "End Step: Remove Left Columns"
@@ -1193,11 +1271,11 @@ None
         Write-Log "End Step: RowId Right Dataset"
 
         Write-Log "Begin Step: Get DataTypes Left Dataset"
-        $leftDatasetColumnTypes = Get-DataTypes -Dataset $leftDataset -AutoDetectTypes $AutoDetectTypes -ScanRows $ScanRows -ColumnTypesArray $columnTypesArray
+        $leftDatasetColumnTypes = Get-DataTypes -Dataset $leftDataset -AutoDetectTypes $AutoDetectTypes -ScanRows $ScanRows -ColumnTypesHashtable $columnTypesHashtable
         Write-Log "End Step: Get DataTypes Left Dataset"
 
         Write-Log "Begin Step: Get DataTypes Right Dataset"
-        $rightDatasetColumnTypes = Get-DataTypes -Dataset $rightDataset -AutoDetectTypes $AutoDetectTypes -ScanRows $ScanRows -ColumnTypesArray $columnTypesArray
+        $rightDatasetColumnTypes = Get-DataTypes -Dataset $rightDataset -AutoDetectTypes $AutoDetectTypes -ScanRows $ScanRows -ColumnTypesHashtable $columnTypesHashtable
         Write-Log "End Step: Get DataTypes Right Dataset"
 
         Write-Log "Begin Step: Cast Left Dataset"
@@ -1208,6 +1286,14 @@ None
         $rightDataset = Cast-Dataset -Dataset $rightDataset -ColumnTypes $rightDatasetColumnTypes
         Write-Log "End Step: Cast Right Dataset"
 
+        Write-Log "Begin Step: Round Left Dataset"
+        $leftDataset = Round-Dataset -Dataset $leftDataset -DatasetColumnTypes $leftDatasetColumnTypes -RoundRulesHashtable $RoundRulesHashtable
+        Write-Log "End Step: Round Left Dataset"
+
+        Write-Log "Begin Step: Round Right Dataset"
+        $rightDataset = Round-Dataset -Dataset $rightDataset -DatasetColumnTypes $rightDatasetColumnTypes -RoundRulesHashtable $RoundRulesHashtable
+        Write-Log "End Step: Round Right Dataset"
+
         Write-Log "Begin Step: Add Key Column Left"
         $leftDataset = Add-Key -Dataset $leftDataset -KeyColumns $keyColumnsArray
         Write-Log "End Step: Add Key Column Left"
@@ -1217,19 +1303,19 @@ None
         Write-Log "End Step: Add Key Column Right"
 
         Write-Log "Begin Step: Get Left Keys"
-        $leftKeys = Get-DistinctValues -Dataset $leftDataset -Columns @('__key')
+        $leftKeys = Get-DistinctValues -Dataset $leftDataset -Columns $keyColumnsArray
         Write-Log "End Step: Get Left Keys"
 
         Write-Log "Begin Step: Get Right Keys"
-        $rightKeys = Get-DistinctValues -Dataset $rightDataset -Columns @('__key')
+        $rightKeys = Get-DistinctValues -Dataset $rightDataset -Columns $keyColumnsArray
         Write-Log "End Step: Get Right Keys"
 
         Write-Log "Begin Step: Check Unique Left"
-        Check-KeyUnique -Dataset $leftDataset | Out-Null
+        [void](Check-KeyUnique -Dataset $leftDataset)
         Write-Log "End Step: Check Unique Left"
 
         Write-Log "Begin Step: Check Unique Right"
-        Check-KeyUnique -Dataset $rightDataset | Out-Null
+        [void](Check-KeyUnique -Dataset $rightDataset)
         Write-Log "End Step: Check Unique Right"
 
         Write-Log "Begin Step: Compare schemas"
@@ -1249,30 +1335,34 @@ None
             Output-Results -ComparisonResults $results -SummariseResults $SummariseResults -DetailedRows $DetailedRows
             Write-Log "End Step: Write output"
         }
-    } catch {
+    }
+    catch {
         throw
     }
 }
 
-# Sample invocation
-# Defaults:
-# $Left             = 'left.csv'
-# $Right            = 'right.csv'
-# $KeyColumns       = 'recordId'
-# $ExcludeColumns   = 'columnE'
-# $NullValues       = 'null'
-# $ApplyTrim        = $true
-# $ScanRows         = 10
-# $SummariseResults = $true
-# $DetailedRows     = 0
+# =========================
+# Sample Invocation
+# =========================
 
-Compare-Csv -Left 'left.csv' `
-            -Right 'right.csv' `
-            -KeyColumns 'recordId' `
-            -ExcludeColumns 'columnE' `
-            -NullValues 'null' `
-            -ApplyTrim $true `
-            -AutoDetectTypes $true `
-            -ScanRows 10 `
-            -SummariseResults $false `
-            -DetailedRows 100
+# Defaults per spec:
+# $Left             : 'left.csv'
+# $Right            : 'right.csv'
+# $KeyColumns       : 'recordId'
+# $ExcludeColumns   : 'columnE'
+# $NullValues       : 'null'
+# $ApplyTrim        : $true
+# $ScanRows         : 10
+
+Compare-Csv `
+    -Left 'left.csv' `
+    -Right 'right.csv' `
+    -KeyColumns 'recordId' `
+    -ExcludeColumns 'columnE' `
+    -NullValues 'null' `
+    -ApplyTrim $true `
+    -ScanRows 10 `
+    -SummariseResults $false `
+    -DetailedRows 500 `
+    -AutoDetectTypes $true `
+    -RoundRules 'columnA:1mi,columnB:1dp'
