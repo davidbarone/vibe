@@ -66,6 +66,51 @@ There is a single main function: `Compare-Csv` which can be called with a variet
 | `$SummariseResults` | `Boolean` | no        | `$true`           | If set to `$true`, then summary results are produced. Otherwise detailed results are produced.                                                            |
 | `$DetailedRows`     | `Integer` | no        | 0                 | This parameter is used to limit the number of detailed results output.                                                                                    |
 
+## Output
+Output is sent to the console. An example of the output is shown below:
+
+``` plaintext
+...
+...
+End Step: Compare schemas
+Begin Step: Write schema output
+
+--------------
+SCHEMA RESULTS
+--------------
+
+ColumnName LeftType RightType
+---------- -------- ---------
+columnA    DATETIME  DATETIME
+columnB     DECIMAL   DECIMAL
+columnC     INTEGER   INTEGER
+columnD      STRING    STRING
+recordId    INTEGER   INTEGER
+
+
+Schemas match. Continuing to perform row-by-row comparison...
+End Step: Write schema output
+Begin Step: Compare datasets
+End Step: Compare datasets
+Begin Step: Write output
+
+-----------------
+ROW LEVEL RESULTS
+-----------------
+
+   CompareType ColumnName Count
+   ----------- ---------- -----
+ KEY_LEFT_ONLY            2    
+KEY_RIGHT_ONLY            2    
+     DIFFERENT columnA    8    
+     DIFFERENT columnB    8    
+     DIFFERENT columnC    8    
+     DIFFERENT columnD    8    
+
+
+End Step: Write output
+```
+
 ## Reporting Issues
 If you find this tool useful, and would like to report issues, please contact me.
 

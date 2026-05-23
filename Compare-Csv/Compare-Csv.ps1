@@ -1362,7 +1362,7 @@ Compare-Csv `
     -NullValues 'null' `
     -ApplyTrim $true `
     -ScanRows 10 `
-    -SummariseResults $false `
+    -SummariseResults $true `
     -DetailedRows 500 `
     -AutoDetectTypes $true `
     -RoundRules 'columnA:1mi,columnB:1dp'
